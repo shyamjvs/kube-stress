@@ -25,13 +25,16 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var (
-	kubeconfig string
+const (
+	KubeStress = "kube-stress"
+)
 
+var (
 	rootCmd = &cobra.Command{
-		Use:   "kube-stress",
+		Use:   KubeStress,
 		Short: "Simple tool for generating stress on a Kubernetes cluster.",
 	}
+	kubeconfig string
 )
 
 func init() {
@@ -45,9 +48,8 @@ func init() {
 
 func Execute() {
 	defer klog.Flush()
-
 	if err := rootCmd.Execute(); err != nil {
-		klog.Errorf("Error executing root command: ", err)
+		klog.Errorf("Error executing root command: %v", err)
 		os.Exit(1)
 	}
 }
