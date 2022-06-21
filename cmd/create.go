@@ -16,8 +16,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"os"
 	"os/signal"
 	"sync"
@@ -30,10 +28,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/flowcontrol"
 	"k8s.io/klog/v2"
 
+	"github.com/shyamjvs/kube-stress/pkg/client"
 	"github.com/shyamjvs/kube-stress/pkg/util"
 )
 
@@ -57,7 +54,7 @@ func init() {
 		Use:   "create",
 		Short: "Create objects of a given type in the cluster",
 		Run: func(cmd *cobra.Command, args []string) {
-			if err := runCommand(); err != nil {
+			if err := createCommand(); err != nil {
 				klog.Errorf("Error executing create command: %v", err)
 				os.Exit(1)
 			}
@@ -65,14 +62,16 @@ func init() {
 	}
 	rootCmd.AddCommand(createCmd)
 	createCmd.Flags().StringVar(&createConfig.namespace, "namespace", KubeStress, "Namespace name where the test objects will be created")
-	createCmd.Flags().StringVar(&createConfig.objectType, "object-type", "configmap", "Type of objects to create (supported values are 'pod' and 'configmap'")
+	createCmd.Flags().StringVar(&createConfig.objectType, "object-type", "configmaps", "Type of objects to create (supported values are 'pods' and 'configmaps'")
 	createCmd.Flags().IntVar(&createConfig.objectSize, "object-size-bytes", 40000, "Size of each object to be created (only used for 'configmap' object type)")
 	createCmd.Flags().IntVar(&createConfig.objectCount, "object-count", 100, "Number of objects to create")
-	createCmd.Flags().IntVar(&createConfig.numClients, "num-clients", 10, "Number of clients to use for load-balancing the create calls")
+	createCmd.Flags().IntVar(&createConfig.numClients, "num-clients", 10, "Number of clients to use for spreading the create calls")
 	createCmd.Flags().Float32Var(&createConfig.qps, "qps", 10.0, "QPS to use while creating the objects")
 }
 
-func runCommand() error {
+func createCommand() error {
+	clients := client.CreateKubeClients(client.GetKubeConfig(kubeconfig), createConfig.numClients)
+
 	// Setup signal handling for the process.
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT)
@@ -92,49 +91,23 @@ func runCommand() error {
 		}
 	}()
 
-	// Create kube clients and the objects.
-	klog.V(1).Infof("Creating %v objects of type '%v' (%v bytes each) in namespace '%v' using %v clients and total QPS = %v",
+	klog.V(1).Infof("Creating %v objects of type '%v' (%v bytes each) in namespace '%v' using %v clients and QPS = %v",
 		createConfig.objectCount,
 		createConfig.objectType,
 		createConfig.objectSize,
 		createConfig.namespace,
 		createConfig.numClients,
 		createConfig.qps)
-	clients, err := createClients()
-	if err != nil {
-		return fmt.Errorf("Failed to create clients: %v", err)
-	}
 	createObjects(ctx, clients)
 	return nil
 }
 
-// Create kube clients.
-func createClients() (clients []*kubernetes.Clientset, err error) {
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		return nil, err
-	}
-	// No client-go rate-limiting (we'll manage the test throughput ourselves).
-	config.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(math.MaxFloat32, math.MaxInt)
-
-	clients = make([]*kubernetes.Clientset, 0, createConfig.numClients)
-	for i := 0; i < createConfig.numClients; i++ {
-		client, err := kubernetes.NewForConfig(config)
-		if err != nil {
-			return nil, err
-		}
-		clients = append(clients, client)
-	}
-	return clients, nil
-}
-
 func createObjects(ctx context.Context, clients []*kubernetes.Clientset) {
-	var numObjectsCreated uint32
-	var wg sync.WaitGroup
-
 	ticker := time.NewTicker(time.Second / time.Duration(createConfig.qps))
 	defer ticker.Stop()
 
+	var wg sync.WaitGroup
+	var numObjectsCreated uint32
 	for i := 0; atomic.LoadUint32(&numObjectsCreated) < uint32(createConfig.objectCount); i++ {
 		select {
 		case <-ctx.Done():
@@ -157,7 +130,6 @@ func createObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 
 func createObject(ctx context.Context, client *kubernetes.Clientset) error {
 	start := time.Now()
-	// Generate random UUID-based name for the object.
 	objectName := "configmap-" + uuid.Must(uuid.NewRandom()).String()
 
 	// TODO: Implement other object-types below.

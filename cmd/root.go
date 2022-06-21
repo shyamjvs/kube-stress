@@ -38,6 +38,7 @@ var (
 )
 
 func init() {
+	// Setup global flags along with default klog/go flags.
 	rootCmd.Flags().SortFlags = false
 	klog.InitFlags(nil)
 	klog.SetOutput(os.Stdout)

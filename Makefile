@@ -7,9 +7,9 @@ TARGET := kube-stress
 build: fmt
 	go mod tidy
 ifeq ($(UNAME_S), Darwin)
-	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o $(TARGET) $(GO_INSTALL_FLAGS) $V
+	time GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -o $(TARGET) $(GO_INSTALL_FLAGS) $V
 else
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o $(TARGET) $(GO_INSTALL_FLAGS) $V
+	time GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o $(TARGET) $(GO_INSTALL_FLAGS) $V
 endif
 
 fmt:
