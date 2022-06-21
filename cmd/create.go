@@ -131,7 +131,6 @@ func createObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 func createObject(ctx context.Context, client *kubernetes.Clientset) error {
 	start := time.Now()
 	objectName := "configmap-" + uuid.Must(uuid.NewRandom()).String()
-
 	// TODO: Implement other object-types below.
 	configmap := &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{

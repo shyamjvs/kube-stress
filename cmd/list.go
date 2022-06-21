@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -31,20 +32,23 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/shyamjvs/kube-stress/pkg/client"
+	"github.com/shyamjvs/kube-stress/pkg/util"
 )
 
 type ListConfig struct {
-	namespace     string
-	objectType    string
-	pageSize      int
-	numClients    int
-	qps           float32
-	totalDuration time.Duration
+	namespace         string
+	objectType        string
+	pageSize          int
+	numClients        int
+	qps               float32
+	totalDuration     time.Duration
+	csvOutputFilepath string
 }
 
 var (
 	listConfig *ListConfig
 	listCmd    *cobra.Command
+	csvWriter  *util.ThreadSafeCsvWriter
 )
 
 func init() {
@@ -53,6 +57,10 @@ func init() {
 		Use:   "list",
 		Short: "List objects of a given type in the cluster",
 		Run: func(cmd *cobra.Command, args []string) {
+			if listConfig.csvOutputFilepath != "" {
+				csvWriter = util.NewThreadSafeCsvWriter(listConfig.csvOutputFilepath)
+				defer csvWriter.Flush()
+			}
 			if err := listCommand(); err != nil {
 				klog.Errorf("Error executing list command: %v", err)
 				os.Exit(1)
@@ -66,6 +74,7 @@ func init() {
 	listCmd.Flags().IntVar(&listConfig.numClients, "num-clients", 10, "Number of clients to use for spreading the list calls")
 	listCmd.Flags().Float32Var(&listConfig.qps, "qps", 2.0, "QPS to generate for the list calls")
 	listCmd.Flags().DurationVar(&listConfig.totalDuration, "total-duration", 5*time.Minute, "Total duration for which to run this command")
+	listCmd.Flags().StringVar(&listConfig.csvOutputFilepath, "csv-output-filepath", "", "Path to the output CSV file where latency values will be written")
 }
 
 func listCommand() error {
@@ -81,7 +90,7 @@ func listCommand() error {
 		for {
 			select {
 			case sig := <-sigs:
-				klog.V(1).Infof("Received stop signal: %v", sig)
+				klog.V(1).Infof("Received a stop signal: %v", sig)
 				once.Do(cancel)
 			case <-ctx.Done():
 				klog.V(1).Info("Cancelled context and exiting program")
@@ -112,7 +121,7 @@ func listObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 	for i := 0; ; i++ {
 		select {
 		case <-derivedCtx.Done():
-			break
+			return
 		case <-ticker.C:
 			client := clients[i%len(clients)]
 			wg.Add(1)
@@ -151,7 +160,11 @@ func listOnce(ctx context.Context, client *kubernetes.Clientset) error {
 		return err
 	}
 
-	// TODO: Record these latencies into an output csv file.
-	klog.V(2).Infof("List call took: %v", time.Since(start))
+	latency := time.Since(start)
+	if csvWriter != nil {
+		csvWriter.Write([]string{fmt.Sprintf("%v", latency)})
+	}
+
+	klog.V(2).Infof("List call took: %v", latency)
 	return nil
 }

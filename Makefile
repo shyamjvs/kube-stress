@@ -11,6 +11,7 @@ ifeq ($(UNAME_S), Darwin)
 else
 	time GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o $(TARGET) $(GO_INSTALL_FLAGS) $V
 endif
+	@chmod +X $(TARGET)
 
 fmt:
 	@gofmt -l -w $(SRC)
