@@ -114,7 +114,7 @@ func listObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 	derivedCtx, cancel := context.WithTimeout(ctx, listConfig.totalDuration)
 	defer cancel()
 
-	ticker := time.NewTicker(time.Second / time.Duration(listConfig.qps))
+	ticker := time.NewTicker(time.Duration(1.0/listConfig.qps) * time.Second)
 	defer ticker.Stop()
 
 	var wg sync.WaitGroup
@@ -135,7 +135,7 @@ func listObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 	}
 
 	wg.Wait()
-	klog.V(1).Infof("Successfully listed objects for a duration of %v", 12345)
+	klog.V(1).Infof("Successfully listed objects for a duration of %v", listConfig.totalDuration)
 }
 
 func listOnce(ctx context.Context, client *kubernetes.Clientset) error {

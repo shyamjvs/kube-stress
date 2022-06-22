@@ -103,7 +103,7 @@ func createCommand() error {
 }
 
 func createObjects(ctx context.Context, clients []*kubernetes.Clientset) {
-	ticker := time.NewTicker(time.Second / time.Duration(createConfig.qps))
+	ticker := time.NewTicker(time.Duration(1.0/createConfig.qps) * time.Second)
 	defer ticker.Stop()
 
 	var wg sync.WaitGroup
