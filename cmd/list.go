@@ -111,23 +111,21 @@ func listCommand() error {
 }
 
 func listObjects(ctx context.Context, clients []*kubernetes.Clientset) {
-	derivedCtx, cancel := context.WithTimeout(ctx, listConfig.totalDuration)
-	defer cancel()
-
+	start := time.Now()
 	ticker := time.NewTicker(time.Duration(1.0/listConfig.qps) * time.Second)
 	defer ticker.Stop()
 
 	var wg sync.WaitGroup
-	for i := 0; ; i++ {
+	for i := 0; time.Since(start) < listConfig.totalDuration; i++ {
 		select {
-		case <-derivedCtx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			client := clients[i%len(clients)]
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if err := listOnce(derivedCtx, client); err != nil {
+				if err := listOnce(ctx, client); err != nil {
 					klog.Errorf("Error seen with list call: %v", err)
 				}
 			}()
@@ -135,7 +133,7 @@ func listObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 	}
 
 	wg.Wait()
-	klog.V(1).Infof("Successfully listed objects for a duration of %v", listConfig.totalDuration)
+	klog.V(1).Infof("Finished listing objects for a duration of %v", listConfig.totalDuration)
 }
 
 func listOnce(ctx context.Context, client *kubernetes.Clientset) error {
