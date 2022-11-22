@@ -112,7 +112,7 @@ func listCommand() error {
 
 func listObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 	start := time.Now()
-	ticker := time.NewTicker(time.Duration(1.0/listConfig.qps) * time.Second)
+	ticker := time.NewTicker(time.Duration(1000000000.0/createConfig.qps) * time.Nanosecond)
 	defer ticker.Stop()
 
 	var wg sync.WaitGroup
