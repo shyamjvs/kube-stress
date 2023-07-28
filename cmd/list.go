@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -115,17 +116,26 @@ func listObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 	ticker := time.NewTicker(time.Duration(1000000000.0/listConfig.qps) * time.Nanosecond)
 	defer ticker.Stop()
 
+	var totalCount atomic.Uint64
+	var failedCount atomic.Uint64
+	defer func() {
+		fc := failedCount.Load()
+		tc := totalCount.Load()
+		klog.Infof("%d out of %d requests failed, failure rate: %v%%", fc, tc, float64(fc)/float64(tc)*100)
+	}()
+
 	var wg sync.WaitGroup
 	for i := 0; time.Since(start) < listConfig.totalDuration; i++ {
 		select {
 		case <-ctx.Done():
+
 			return
 		case <-ticker.C:
 			client := clients[i%len(clients)]
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if err := listOnce(ctx, client); err != nil {
+				if err := listOnce(ctx, client, &totalCount, &failedCount); err != nil {
 					klog.Errorf("Error seen with list call: %v", err)
 				}
 			}()
@@ -136,9 +146,10 @@ func listObjects(ctx context.Context, clients []*kubernetes.Clientset) {
 	klog.V(1).Infof("Finished listing objects for a duration of %v", listConfig.totalDuration)
 }
 
-func listOnce(ctx context.Context, client *kubernetes.Clientset) error {
+func listOnce(ctx context.Context, client *kubernetes.Clientset, totalCount, failedCount *atomic.Uint64) error {
 	requestCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
+	totalCount.Add(1)
 
 	start := time.Now()
 	rc, err := client.CoreV1().RESTClient().Get().
@@ -155,6 +166,7 @@ func listOnce(ctx context.Context, client *kubernetes.Clientset) error {
 		}
 	}
 	if err != nil {
+		failedCount.Add(1)
 		return err
 	}
 
